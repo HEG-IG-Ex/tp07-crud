@@ -22,6 +22,14 @@
   $totalResults = 0;
   $resultat = '';
   $erreur = '';
+  $confirmation = '';
+
+  // Variable du formulaire.
+  $som_id = '';
+  $edit_nom = '';
+  $edit_region = '';
+  $edit_altitude = '';
+  $confirmation = '';
 
   /**
    * Class Sommet
@@ -51,7 +59,7 @@
      * Génère les conditions (where) de la requête selon les filtres qui
      * ont été sélectionnés.
      */
-    public function filtre($champ, $valeur, $operateur) {
+    public function filtrer($champ, $valeur, $operateur) {
 
       // Si l'opérateur "like" a été définit, rajoute un % afin de sélectionner toutes
       // les entrées d'un champ commençant par la valeur qui a été définit.
@@ -77,7 +85,7 @@
      * Genère l'order (order by) de la requête selon les critères de tri
      * qui ont été définit.
      */
-    public function tri($tri, $sens) {
+    public function trier($tri, $sens) {
       switch($tri) {
         case 'region':
           $this->tri = "som_region";
@@ -98,14 +106,14 @@
      * Définit la "limit" de la requête en fonction de la page sur laquelle on
      * se trouve.
      */
-    public function pagination($page, $nombreParPage = NOMBRE_PAR_PAGE) {
+    public function paginer($page, $nombreParPage = NOMBRE_PAR_PAGE) {
       $this->limit = "limit " . ($page-1) * $nombreParPage . ", $nombreParPage";
     }
   
     /**
      * Lance la requête et retourne les résultats.
      */
-    public function resultat($debug = false) {
+    public function rechercher($debug = false) {
       try {
         // Construction du filtre sur la bases du tableau de filtres.
         $where = count($this->criteres) ? "where " . implode(' AND ', $this->criteres) : '';
@@ -122,9 +130,9 @@
         $rec = $this->bdd->query($sql);
   
         // Parcours du résultat.
-        $res = '';
+        $res = [];
         while ($row = $rec->fetch_object()) {
-          $res .= "$row->som_nom $row->som_region $row->som_altitude<br>";
+          $res[] = $row;
         }
 
         // Récupère le nombre total de résultat
@@ -155,41 +163,41 @@
     // Ajoute un filtre "nom" si défini.
     if (isset($_GET['nom']) && $_GET['nom']) {
       $nom = $_GET['nom'];
-      $sommet->filtre('som_nom', $nom, 'like');
+      $sommet->filtrer('som_nom', $nom, 'like');
     }
 
     // Ajoute un filtre "region" si défini.
     if (isset($_GET['region']) && $_GET['region']) {
       $region = $_GET['region'];
-      $sommet->filtre('som_region', $region, 'like');
+      $sommet->filtrer('som_region', $region, 'like');
     }
 
     // Ajoute un filtre "altitude minimum" si défini.
     if (isset($_GET['alt_min']) && $_GET['alt_min']) {
       $alt_min = $_GET['alt_min'];
-      $sommet->filtre('som_altitude', $alt_min, '>');
+      $sommet->filtrer('som_altitude', $alt_min, '>');
     }
 
     // Ajoute un filtre "altitude maximum" si défini.
     if (isset($_GET['alt_max']) && $_GET['alt_max']) {
       $alt_max = $_GET['alt_max'];
-      $sommet->filtre('som_altitude', $alt_max, '<');
+      $sommet->filtrer('som_altitude', $alt_max, '<');
     }
 
     // Ajoute un filtre "tri" et "sens" si défini.
     if (isset($_GET['tri']) && $_GET['sens']) {
       $tri = $_GET['tri'];
       $sens = $_GET['sens'];
-      $sommet->tri($tri, $sens);
+      $sommet->trier($tri, $sens);
     }
     
     // Ajoute la pagination.
     $page = (isset($_GET['page']) && $_GET['page']) ? $_GET['page'] : 1;
-    $sommet->pagination($page);
+    $sommet->paginer($page);
 
     // Recherche les résultats sur le bouton "submit" ou un des boutons "page" a été cliqué.
     if (isset($_GET['submit']) || isset($_GET['page'])) {
-      $resultat = $sommet->resultat(true);
+      $resultat = $sommet->rechercher(true);
       $totalResults = $sommet->totalResults;
     }
   
@@ -271,6 +279,11 @@
 
       <hr />
 
+      <!-- Button trigger modal -->
+      <button type="button" class="btn btn-primary" id="creer">
+        Créer
+      </button>
+
       <!-- Pagination de la recherche -->
       <nav aria-label="Page navigation example">
         <ul class="pagination justify-content-center">
@@ -280,13 +293,158 @@
         </ul>
       </nav>
 
+      <!-- Affiche le résultat de la recherche -->
+      <?php if ($resultat) { ?>
+      <p><?php foreach ($resultat as $result) { ?>
+        <div>
+          <span data-name="<?php echo $result->som_nom ?>"><?php echo $result->som_nom ?></span>
+          <span data-region="<?php echo $result->som_region ?>"><?php echo $result->som_region ?></span>
+          <span data-altitude="<?php echo $result->som_altitude ?>"><?php echo $result->som_altitude ?></span>
+          <button type="button" class="edit btn btn-secondary btn-sm" id="edit-<?php echo $result->som_id ?>">Modifier</button>
+          <button type="button" class="delete btn btn-secondary btn-sm" id="delete-<?php echo $result->som_id ?>">Supprimer</button>
+        </div>
+      <?php } ?></p>
+      <?php } ?></p>
+
     </form>
 
-    <!-- Affiche le résultat de la recherche -->
-    <p><?php echo $resultat ?></p>
+    <!-- Affichage de la modale pour le formulaire de création / modification -->
+    <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+      <form method="post" action="">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="editModalLabel">Remplissez les champs</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <input type="hidden" class="form-control" id="som_id_edit" name="som_id" value="<?php echo $som_id ?>">
+              <div class="mb-3">
+                <label for="edit_nom" class="form-label">Nom</label>
+                <input type="text" class="form-control" id="edit_nom" name="edit_nom" value="<?php echo $edit_nom ?>">
+              </div>
+              <div class="mb-3">
+                <label for="edit_region" class="form-label">Région</label>
+                <input type="text" class="form-control" id="edit_region" name="edit_region" value="<?php echo $edit_region ?>">
+              </div>
+              <div class="mb-3">
+                <label for="edit_altitude" class="form-label">Altitude</label>
+                <input type="text" class="form-control" id="edit_altitude" name="edit_altitude" value="<?php echo $edit_altitude ?>">
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+              <button type="submit" name="save" id="save" class="btn btn-primary">Créer</button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
 
-    <!-- Affiche l'erreur -->
-    <p class="text-bg-danger"><?php echo $erreur ?></p>
+    <!-- Affichage de la modale pour le formulaire de suppression -->
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+      <form method="post" action="">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="deleteModalLabel">Suppression du sommet</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <input type="hidden" class="form-control" id="som_id_delete" name="som_id" value="<?php echo $som_id ?>">
+              <p>Êtes-vous sûr de vouloir supprimer le sommet ?</p>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+              <button type="submit" name="delete" id="delete" class="btn btn-primary">Supprimer</button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
 
+    <!-- Affichage du Toast pour la confirmation de message -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+      <div id="confirm-toast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+          <div class="toast-body">
+            <?php echo $confirmation ?>
+          </div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      </div>
+    </div>
+  
+    <!-- Affichage du Toast pour les erreurs de message -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+      <div id="error-toast" class="toast align-items-center text-bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+          <div class="toast-body">
+            <?php echo $erreur ?>
+          </div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      </div>
+    </div>
+  
+    <!-- Toast -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+    
+    <!-- Script personnalisé -->
+    <script type="text/javascript">
+      const editModal = new bootstrap.Modal(document.getElementById("editModal"), {});
+      const deleteModal = new bootstrap.Modal(document.getElementById("deleteModal"), {});
+      
+      // Clic sur un bouton Edit: Ouverture de la modale avec remplissage des champs du formulaire selon le sommet choisi.
+      document.querySelectorAll("button.edit").forEach((i) => {
+        i.addEventListener('click', (e) => {
+          document.getElementById('som_id_edit').value = e.target.id.substring(5);
+          [...e.target.parentNode.children].map(c => {
+            if (c.getAttribute("data-name")) {
+              document.getElementById('edit_nom').value = c.getAttribute("data-name");
+            }
+            if (c.getAttribute("data-region")) {
+              document.getElementById('edit_region').value = c.getAttribute("data-region");
+            }
+            if (c.getAttribute("data-altitude")) {
+              document.getElementById('edit_altitude').value = c.getAttribute("data-altitude");
+            }
+          });
+          document.getElementById('save').innerHTML = 'Modifier';
+          editModal.show();
+        });
+      });
+
+      // Clic sur un bouton Delete: Ouverture de la modale avec remplissage du champ du formulaire ID du sommet choisi.
+      document.querySelectorAll("button.delete").forEach((i) => {
+        i.addEventListener('click', (e) => {
+          document.getElementById('som_id_delete').value = e.target.id.substring(7);
+          deleteModal.show();
+        });
+      });
+
+      // Clic sur un bouton Créer: Ouverture de la modale avec réinitialisation des champs du formulaire.
+      document.getElementById('creer').addEventListener('click', (e) => {
+        document.getElementById('som_id_edit').value = '';
+        document.getElementById('edit_nom').value = '';
+        document.getElementById('edit_region').value = '';
+        document.getElementById('edit_altitude').value = '';
+        document.getElementById('save').innerHTML = 'Créer';
+        editModal.show();
+      });
+
+      // Ouverture automatique du Toast confirm lorsque la variable PHP $confirmation n'est pas vide.
+      <?php if ($confirmation) { ?>
+        const confirmToast = new bootstrap.Toast(document.getElementById("confirm-toast"), {});
+        confirmToast.show();
+      <?php } ?>
+
+      // Ouverture automatique du Toast error lorsque la variable PHP $erreur n'est pas vide.
+      <?php if ($erreur) { ?>
+        const errorToast = new bootstrap.Toast(document.getElementById("error-toast"), {});
+        errorToast.show();
+      <?php } ?>
+
+    </script>
   </body>
 </html>
