@@ -273,12 +273,46 @@ try {
   $sommet->paginer($page);
 
   // Recherche les résultats sur le bouton "submit" ou un des boutons "page" a été cliqué.
-  if (isset($_GET['submit']) || isset($_GET['page'])) {
+  if (isset($_GET['submit']) || isset($_GET['export']) || isset($_GET['page'])) {
     $resultat = $sommet->rechercher(false);
+
+    if (isset($_GET['export'])) {
+      switch ($_GET['export']) {
+        case 'json':
+          header("Content-Type: application/json; charset=UTF-8");
+          // Convert JSON data from an array to a string
+          $jsonString = json_encode($jsonData, JSON_PRETTY_PRINT);
+          break;
+        case 'xml':
+          header('Content-type: text/xml; charset=UTF-8');
+          $xml = new XMLWriter;
+          $xml->openURI('php://output');
+          $xml->startDocument('1.0', 'utf-8');
+          $xml->setIndent(true); // makes output cleaner
+          $xml->startElement('sommets');
+          foreach ($resultat as $result) {
+            $xml->startElement('sommet');
+            $xml->writeAttribute('id', $result->som_id);
+            $xml->writeElement('nom', $result->som_nom);
+            $xml->writeElement('region', $result->som_region);
+            $xml->writeElement('altitude', $result->som_altitude);
+            $xml->endElement();
+          }
+          $xml->endElement();
+          $xml->endDocument();
+          break;
+        case 'csv':
+          echo "i égal 2";
+          break;
+      }
+    }
+
+
+
+
     $totalResults = $sommet->totalResults;
   }
 
-  print_r($_POST);
 
   // Create 
   if (isset($_POST['edit_nom'])) {
@@ -293,21 +327,21 @@ try {
 
   if (isset($_POST['save']) && !isset($_POST['som_id']) && !$_POST['som_id']) {
     $confirmation = $sommet->inserer($edit_nom, $edit_region, $edit_altitude, true);
-    $sommet->rechercher(false);
+    $resultat = $sommet->rechercher(false);
   }
 
   // Modify
   if (isset($_POST['save']) && isset($_POST['som_id'])) {
     $som_id_edit = $_POST['som_id'];
     $confirmation = $sommet->modifier($som_id_edit, $edit_nom, $edit_region, $edit_altitude, true);
-    $sommet->rechercher(false);
+    $resultat = $sommet->rechercher(false);
   }
 
   // Delete
   if (isset($_POST['delete']) && isset($_POST['som_id'])) {
     $som_id_delete = $_POST['som_id'];
     $confirmation = $sommet->supprimer($som_id_delete, true);
-    $sommet->rechercher(false);
+    $resultat = $sommet->rechercher(false);
   }
 
   // Récupère l'erreur si elle existe.
@@ -404,6 +438,15 @@ try {
     <button type="button" class="btn btn-primary" id="creer">
       Créer
     </button>
+    <button type="submit" class="btn btn-primary" name="export" value="json" id="json">
+      json
+    </button>
+    <button type="submit" class="btn btn-primary" name="export" value="xml" id="xml">
+      xml
+    </button>
+    <button type="submit" class="btn btn-primary" name="export" value="csv" id="csv">
+      csv
+    </button>
 
     <!-- Pagination de la recherche -->
     <nav aria-label="Page navigation example">
@@ -427,7 +470,11 @@ try {
         <button type="button" class="delete btn btn-secondary btn-sm" id="delete-<?php echo $result->som_id ?>">Supprimer</button>
       </div>
     <?php } ?></p>
-  <?php } ?></p>
+  <?php }
+
+
+
+  ?></p>
 
   </form>
 
